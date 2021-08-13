@@ -1,27 +1,24 @@
 import 'package:cs492_project5/screens/new_entry.dart';
-import 'package:cs492_project5/screens/remote_data_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'screens/waste_entry_list.dart';
 import 'screens/waste_entry.dart';
 import 'screens/new_entry.dart';
-import 'screens/share_location_screen.dart';
-import 'screens/camera_screen.dart';
+  import 'screens/camera_screen.dart';
 
 class MyApp extends StatefulWidget {
   static final routes = {
     WastefulEntriesScreen.routeName: (context) => WastefulEntriesScreen(),
-    WasteEntryScreen.routeName: (context) => WasteEntryScreen(),
-    NewEntryScreen.routeName: (context) => NewEntryScreen(),
-    ShareLocationScreen.routeName: (context) => ShareLocationScreen(),
-    CameraScreen.routeName: (context) => CameraScreen(),
-    RemoteDataScreen.routeName: (context) => RemoteDataScreen()
+    CameraScreen.routeName: (context) => CameraScreen(imageURL: ''),
   };
 
   @override
-  _MyAppState createState() => _MyAppState();
+  MyAppState createState() => MyAppState();
 }
 
-class _MyAppState extends State<MyApp> {
+class MyAppState extends State<MyApp> {
+  late int totalWasted = 0;
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -31,5 +28,26 @@ class _MyAppState extends State<MyApp> {
       ),
       routes: MyApp.routes,
     );
+  }
+
+  void initState() {
+    super.initState();
+    totalWasted = 0;
+    _totalWastedValue();
+  }
+
+  _totalWastedValue() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    setState(() {
+      totalWasted = prefs.getInt('totalWastedValue') ?? 0;
+    });
+  }
+
+  Future addItems(int input) async {
+    setState(() {
+      totalWasted += input;
+    });
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    prefs.setInt('totalWastedValue', totalWasted);
   }
 }

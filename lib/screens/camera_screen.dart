@@ -1,11 +1,19 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:location/location.dart';
+import '../app.dart';
+import 'waste_entry_list.dart';
 
 class CameraScreen extends StatefulWidget {
   static const routeName = 'camera_screen';
+  final String imageURL;
+
+  const CameraScreen({Key? key, required this.imageURL}) : super(key: key);
+
 
   @override
   _CameraScreenState createState() => _CameraScreenState();
@@ -13,12 +21,13 @@ class CameraScreen extends StatefulWidget {
 
 class _CameraScreenState extends State<CameraScreen> {
   File? image;
+  String? imageUrl;
+  LocationData? locationData;
+  var locationService = Location();
+  late int formInput;
   final picker = ImagePicker();
+  final _formKey = GlobalKey<FormState>();
 
-/*
-* Pick an image from the gallery, upload it to Firebase Storage and return
-* the URL of the image in Firebase Storage.
-*/
   Future getImage() async {
     final pickedFile = await picker.pickImage(source: ImageSource.gallery);
     image = File(pickedFile!.path);
@@ -32,60 +41,124 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text('hello')),
-      body: StreamBuilder(
-          stream: FirebaseFirestore.instance.collection('posts').snapshots(),
-          builder: (BuildContext context, AsyncSnapshot<QuerySnapshot> snapshot) {
-            if (snapshot.hasData &&
-                snapshot.data!.docs != null &&
-                snapshot.data!.docs.length > 0) {
-              return Column(
-                children: [
-                  Expanded(
-                    child: ListView.builder(
-                      itemCount: snapshot.data!.docs.length,
-                      itemBuilder: (context, index) {
-                        var post = snapshot.data!.docs[index];
-                        return ListTile(
-                            leading: Text(post['submission_date'].toString()),
-                            title: Text(post['food_items'].toString()));
-                      },
-                    ),
-                  ),
-                  ElevatedButton(
-                    child: Text('Select photo and upload data'),
-                    onPressed: () {
-                      uploadData();
-                    },
-                  ),
-                ],
-              );
-            } else {
-              return Column(
-                children: [
-                  Center(child: CircularProgressIndicator()),
-                  ElevatedButton(
-                    child: Text('Select photo and upload data'),
-                    onPressed: () {
-                      uploadData();
-                    },
-                  ),
-                ],
-              );
-            }
-          }),
-    );
+  void initState() {
+    super.initState();
+    loadImage();
+    retrieveLocation();
   }
 
-  void uploadData() async {
+  void loadImage() async {
     final url = await getImage();
-    final time = DateTime.now().millisecondsSinceEpoch % 1000;
-    final number = 4;
-    print(url);
+    setState(() {
+      imageUrl = url;
+    });
+  }
+
+  void retrieveLocation() async {
+    try {
+      var _serviceEnabled = await locationService.serviceEnabled();
+      if (!_serviceEnabled) {
+        _serviceEnabled = await locationService.requestService();
+        if (!_serviceEnabled) {
+          print('Failed to enable service. Returning.');
+          return;
+        }
+      }
+
+      var _permissionGranted = await locationService.hasPermission();
+      if (_permissionGranted == PermissionStatus.denied) {
+        _permissionGranted = await locationService.requestPermission();
+        if (_permissionGranted != PermissionStatus.granted) {
+          print('Location service permission not granted. Returning.');
+        }
+      }
+
+      locationData = await locationService.getLocation();
+    } on PlatformException catch (e) {
+      print('Error: ${e.toString()}, code: ${e.code}');
+      locationData = null;
+    }
+    locationData = await locationService.getLocation();
+    setState(() {});
+  }
+
+  Widget build(BuildContext context) {
+    MyAppState? appState = context.findAncestorStateOfType<MyAppState>();
+
+    if(imageUrl == null) {
+      return Scaffold(
+        appBar: AppBar(title: Text('hello')),
+        body: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Center(child: CircularProgressIndicator()),
+          ],
+        )
+      );
+    } else {
+      return Scaffold(
+          appBar: AppBar(title: Text('hello')),
+          body: Container(
+              child: Column(
+                children: [
+                  Image.network('$imageUrl'),
+                  Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        TextFormField(
+                          inputFormatters: <TextInputFormatter>[
+                            FilteringTextInputFormatter.digitsOnly
+                          ],
+                          keyboardType: TextInputType.phone,
+                          onSaved: (value) {
+                            if (value!.isNotEmpty) {
+                              formInput = int.parse(value);
+                            }
+                          },
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Please enter a number';
+                            }
+                            return null;
+                          },
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 16.0),
+                          child: ElevatedButton(
+                            onPressed: () {
+                              _formKey.currentState!.save();
+                              if (_formKey.currentState!.validate()) {
+                                setState(() {
+                                  if(appState != null) {
+                                    appState.addItems(formInput);
+                                  }
+                                });
+                                uploadData(formInput);
+                                Navigator.of(context).popAndPushNamed(WastefulEntriesScreen.routeName);
+                              }
+                            },
+                            child: const Text('Submit'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                ],
+              )
+          )
+      );
+    }
+  }
+
+  void uploadData(int input) async {
+    final latitude = locationData!.latitude;
+    final longitude = locationData!.longitude;
+    final time = Timestamp.now();
+    final number = input;
     FirebaseFirestore.instance
         .collection('posts')
-        .add({'food_items': number, 'submission_date': time, 'url': url});
+        .add({'food_items': number, 'submission_date': time, 'url': imageUrl, 'latitude': latitude, 'longitude': longitude});
   }
 }
