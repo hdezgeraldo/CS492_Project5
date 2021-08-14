@@ -1,13 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_analytics/firebase_analytics.dart';
+import 'package:firebase_analytics/observer.dart';
 import 'package:intl/intl.dart';
 import 'waste_entry.dart';
 import 'camera_screen.dart';
+
 import '../models/food_waste_post.dart';
 
 class WastefulEntriesScreen extends StatefulWidget {
   static const routeName = "/";
+
+  WastefulEntriesScreen({
+    Key? key,
+    required this.analytics,
+    required this.observer,
+  }) : super(key: key);
+
+  final FirebaseAnalytics analytics;
+  final FirebaseAnalyticsObserver observer;
 
   @override
   WastefulEntriesScreenState createState() => WastefulEntriesScreenState();
@@ -15,6 +27,23 @@ class WastefulEntriesScreen extends StatefulWidget {
 
 class WastefulEntriesScreenState extends State<WastefulEntriesScreen> {
   late int totalWasted = 0;
+  String _message = '';
+
+  void setMessage(String message) {
+    setState(() {
+      _message = message;
+    });
+  }
+
+  Future<void> _sendAnalyticsEvent(DateTime event) async {
+    await widget.analytics.logEvent(
+      name: 'entry_page_event',
+      parameters: <String, dynamic>{
+        'page_date': event,
+      },
+    );
+    setMessage('logEvent succeeded');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -46,6 +75,8 @@ class WastefulEntriesScreenState extends State<WastefulEntriesScreen> {
                               textAlign: TextAlign.right,
                             ),
                             onTap: () {
+                              _sendAnalyticsEvent(post['submission_date']
+                                  .toDate());
                               Navigator.push(
                                   context,
                                   MaterialPageRoute(
